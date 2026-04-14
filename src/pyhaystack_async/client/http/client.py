@@ -22,6 +22,16 @@ from .exceptions import (
 _PROTO_RE = re.compile(r"^[a-z]+://")
 
 
+def _normalise_base_uri(uri: str | None) -> str | None:
+    if uri is None or uri.endswith("/"):
+        return uri
+    return f"{uri}/"
+
+
+def _normalise_headers(headers: httpx.Headers) -> dict[str, str]:
+    return {key.lower(): value for key, value in headers.items()}
+
+
 @dataclass(slots=True)
 class HTTPResponse:
     """Normalised HTTP response."""
@@ -60,7 +70,7 @@ class AsyncHttpClient:
         tls_cert: str | None = None,
         log: logging.Logger | None = None,
     ):
-        self.uri = uri
+        self.uri = _normalise_base_uri(uri)
         self.params = params
         self.headers = headers
         self.cookies = cookies
@@ -71,23 +81,56 @@ class AsyncHttpClient:
         self.tls_cert = tls_cert
         self.log = log
         self._client: httpx.AsyncClient | None = None
+        self._client_proxy: str | None = None
 
-    async def _ensure_client(self) -> httpx.AsyncClient:
-        if self._client is None or self._client.is_closed:
-            verify: bool | ssl.SSLContext = True
-            if isinstance(self.tls_verify, str):
-                ctx = ssl.create_default_context(cafile=self.tls_verify)
-                verify = ctx
-            elif not self.tls_verify:
-                verify = False
+    def _resolve_verify(self, tls_verify: bool | str | None = None) -> bool | ssl.SSLContext:
+        resolved = self.tls_verify if tls_verify is None else tls_verify
+        if isinstance(resolved, str):
+            return ssl.create_default_context(cafile=resolved)
+        if not resolved:
+            return False
+        return True
 
-            self._client = httpx.AsyncClient(
-                verify=verify,
-                cert=self.tls_cert,
-                timeout=httpx.Timeout(self.timeout or 30.0),
-                follow_redirects=True,
-                limits=httpx.Limits(max_connections=20, max_keepalive_connections=10),
-            )
+    def _resolve_proxy(self, uri: str) -> str | None:
+        if not self.proxies:
+            return None
+
+        scheme = uri.split(":", 1)[0].lower()
+        for key in (f"{scheme}://", scheme, "all://", "all"):
+            proxy = self.proxies.get(key)
+            if proxy is not None:
+                return proxy
+
+        if len(self.proxies) == 1:
+            return next(iter(self.proxies.values()))
+
+        return None
+
+    def _build_httpx_client(
+        self,
+        *,
+        tls_verify: bool | str | None = None,
+        proxy: str | None = None,
+    ) -> httpx.AsyncClient:
+        return httpx.AsyncClient(
+            verify=self._resolve_verify(tls_verify),
+            cert=self.tls_cert,
+            proxy=proxy,
+            timeout=httpx.Timeout(self.timeout or 30.0),
+            follow_redirects=True,
+            limits=httpx.Limits(max_connections=20, max_keepalive_connections=10),
+        )
+
+    async def _ensure_client(self, *, proxy: str | None = None) -> httpx.AsyncClient:
+        if (
+            self._client is None
+            or self._client.is_closed
+            or self._client_proxy != proxy
+        ):
+            if self._client is not None and not self._client.is_closed:
+                await self._client.aclose()
+            self._client = self._build_httpx_client(proxy=proxy)
+            self._client_proxy = proxy
         return self._client
 
     async def close(self) -> None:
@@ -118,6 +161,8 @@ class AsyncHttpClient:
                 raise ValueError("uri must be absolute or base set in uri attribute")
             uri = urljoin(self.uri, uri)
 
+        proxy = self._resolve_proxy(uri)
+
         merged_params = self._merge(params, self.params, exclude_params)
         merged_headers = self._merge(headers, self.headers, exclude_headers)
         merged_cookies = self._merge(cookies, self.cookies, exclude_cookies)
@@ -131,47 +176,56 @@ class AsyncHttpClient:
             elif isinstance(resolved_auth, DigestAuthenticationCredentials):
                 httpx_auth = httpx.DigestAuth(resolved_auth.username, resolved_auth.password)
 
-        client = await self._ensure_client()
+        temp_client: httpx.AsyncClient | None = None
+        if tls_verify is None:
+            client = await self._ensure_client(proxy=proxy)
+        else:
+            temp_client = self._build_httpx_client(tls_verify=tls_verify, proxy=proxy)
+            client = temp_client
 
         if self.log is not None:
             self.log.debug("HTTP %s %s", method, uri)
 
         try:
-            response = await client.request(
-                method=method,
-                url=uri,
-                content=body,
-                params=merged_params or None,
-                headers=merged_headers or None,
-                cookies=merged_cookies or None,
-                auth=httpx_auth,
-                timeout=timeout or self.timeout or 30.0,
-            )
-
-            if accept_status and response.status_code in accept_status:
-                pass  # don't raise
-            elif response.status_code >= 400:
-                raise HTTPStatusError(
-                    f"HTTP {response.status_code}: {uri}",
-                    status=response.status_code,
-                    headers=dict(response.headers),
-                    body=response.content,
+            try:
+                response = await client.request(
+                    method=method,
+                    url=uri,
+                    content=body,
+                    params=merged_params or None,
+                    headers=merged_headers or None,
+                    cookies=merged_cookies or None,
+                    auth=httpx_auth,
+                    timeout=timeout or self.timeout or 30.0,
                 )
 
-        except httpx.TimeoutException as e:
-            raise HTTPTimeoutError(str(e)) from e
-        except httpx.TooManyRedirects as e:
-            raise HTTPRedirectError(str(e)) from e
-        except httpx.ConnectError as e:
-            raise HTTPConnectionError(str(e)) from e
-        except (HTTPStatusError, HTTPTimeoutError, HTTPRedirectError, HTTPConnectionError):
-            raise
-        except httpx.HTTPError as e:
-            raise HTTPConnectionError(str(e)) from e
+                if accept_status and response.status_code in accept_status:
+                    pass
+                elif response.status_code >= 400:
+                    raise HTTPStatusError(
+                        f"HTTP {response.status_code}: {uri}",
+                        status=response.status_code,
+                        headers=_normalise_headers(response.headers),
+                        body=response.content,
+                    )
+
+            except httpx.TimeoutException as e:
+                raise HTTPTimeoutError(str(e)) from e
+            except httpx.TooManyRedirects as e:
+                raise HTTPRedirectError(str(e)) from e
+            except httpx.ConnectError as e:
+                raise HTTPConnectionError(str(e)) from e
+            except (HTTPStatusError, HTTPTimeoutError, HTTPRedirectError, HTTPConnectionError):
+                raise
+            except httpx.HTTPError as e:
+                raise HTTPConnectionError(str(e)) from e
+        finally:
+            if temp_client is not None:
+                await temp_client.aclose()
 
         return HTTPResponse(
             status_code=response.status_code,
-            headers=dict(response.headers),
+            headers=_normalise_headers(response.headers),
             body=response.content,
             cookies={k: v for k, v in response.cookies.items()},
         )

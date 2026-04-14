@@ -42,8 +42,7 @@ async def authenticate_skyspark(
 
     Returns cookies dict on success.
     """
-    base_uri = client.uri or ""
-    login_uri = f"{base_uri}auth/{project}/api?{username}"
+    login_uri = f"auth/{project}/api?{username}"
 
     # Step 1: GET login params
     resp = await client.request(
@@ -57,9 +56,19 @@ async def authenticate_skyspark(
     )
 
     login_params: dict[str, str] = {}
-    for line in resp.text.strip().split("\n"):
+    for raw_line in resp.text.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        if ":" not in line:
+            raise ValueError(f"SkySpark login failed — malformed login response line: {line!r}")
         key, value = line.split(":", 1)
         login_params[key.strip()] = value.strip()
+
+    missing = [key for key in ("username", "userSalt", "nonce") if key not in login_params]
+    if missing:
+        missing_keys = ", ".join(missing)
+        raise ValueError(f"SkySpark login failed — missing {missing_keys} in response")
 
     sk_username = login_params["username"]
     user_salt = login_params["userSalt"]
@@ -81,7 +90,7 @@ async def authenticate_skyspark(
     )
 
     # Parse cookie from response body
-    cookie_match = _COOKIE_RE.match(resp.text)
+    cookie_match = _COOKIE_RE.match(resp.text.strip())
     if not cookie_match:
         raise IOError("SkySpark login failed — no cookie in response")
 

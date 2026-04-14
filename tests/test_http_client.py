@@ -135,3 +135,31 @@ async def test_basic_auth():
             assert req.headers["authorization"].startswith("Basic ")
         finally:
             await client.close()
+
+
+@pytest.mark.asyncio
+async def test_base_uri_without_trailing_slash():
+    """Relative requests work when the base URI omits the trailing slash."""
+    with respx.mock:
+        respx.get("https://example.com/api/about").mock(
+            return_value=httpx.Response(200, text="OK")
+        )
+        client = AsyncHttpClient(uri="https://example.com")
+        try:
+            resp = await client.get("api/about")
+            assert resp.status_code == 200
+        finally:
+            await client.close()
+
+
+def test_resolve_proxy_prefers_scheme_match():
+    """Proxy resolution prefers scheme-specific entries before global fallbacks."""
+    client = AsyncHttpClient(
+        proxies={
+            "all://": "http://proxy-all.local:8080",
+            "https://": "http://proxy-https.local:8443",
+        }
+    )
+
+    assert client._resolve_proxy("https://example.com/api") == "http://proxy-https.local:8443"
+    assert client._resolve_proxy("http://example.com/api") == "http://proxy-all.local:8080"
