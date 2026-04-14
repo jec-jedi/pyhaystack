@@ -39,13 +39,10 @@ async def authenticate_niagara4_scram(
 
     Returns cookies dict (JSESSIONID + niagara_userid) on success.
     """
-    base_uri = client.uri or ""
-    login_uri = base_uri
-
     # Step 1: Clear prelogin state
     resp = await client.request(
         "GET",
-        f"{login_uri}prelogin?clear=true",
+        "prelogin?clear=true",
         cookies={},
         headers={},
         exclude_cookies=True,
@@ -53,12 +50,12 @@ async def authenticate_niagara4_scram(
         accept_status={200},
     )
     if resp.status_code != 200:
-        raise HTTPStatusError("Unable to connect to Niagara4 server", resp.status_code)
+        raise HTTPStatusError("Unable to connect to Niagara4 server", status=resp.status_code)
 
     # Step 2: Send username to prelogin
     await client.request(
         "POST",
-        f"{login_uri}prelogin",
+        "prelogin",
         params={"j_username": username},
         cookies={},
         headers={},
@@ -76,7 +73,7 @@ async def authenticate_niagara4_scram(
 
     resp = await client.request(
         "POST",
-        f"{login_uri}j_security_check",
+        "j_security_check",
         body=msg_body.encode(),
         headers={"Content-Type": "application/x-niagara-login-support"},
         cookies=cookies_for_auth,
@@ -109,7 +106,7 @@ async def authenticate_niagara4_scram(
     cookies_step4 = {"niagara_userid": username, "JSESSIONID": jsessionid}
     resp = await client.request(
         "POST",
-        f"{login_uri}j_security_check",
+        "j_security_check",
         body=final_body.strip().encode(),
         headers={"Content-Type": "application/x-niagara-login-support"},
         cookies=cookies_step4,
@@ -130,12 +127,15 @@ async def authenticate_niagara4_scram(
 
     resp = await client.request(
         "POST",
-        f"{login_uri}j_security_check",
+        "j_security_check",
         body=None,
         headers={"Content-Type": "application/x-niagara-login-support"},
         accept_status={200},
     )
     if resp.status_code != 200:
-        raise HTTPStatusError("Niagara4 server refused final validation", resp.status_code)
+        raise HTTPStatusError(
+            "Niagara4 server refused final validation",
+            status=resp.status_code,
+        )
 
     return result_cookies

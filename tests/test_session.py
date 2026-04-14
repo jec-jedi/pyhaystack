@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+from unittest.mock import AsyncMock, patch
+
 import hszinc
 import pytest
 
-from pyhaystack_async.client.loader import connect, get_implementation
 from pyhaystack_async.client.http.client import HTTPResponse
+from pyhaystack_async.client.loader import connect, get_implementation
 from pyhaystack_async.client.session import HaystackSession
+from pyhaystack_async.client.widesky import WideskyHaystackSession
 
 
 class DummySession(HaystackSession):
@@ -109,3 +112,32 @@ def test_parse_grid_returns_grid(mode: str):
     parsed = session._parse_grid(response, mode)
     assert isinstance(parsed, hszinc.Grid)
     assert parsed[0]["dis"] == "About"
+
+
+@pytest.mark.asyncio
+async def test_widesky_session_accepts_relative_expires_in():
+    """WideSky sessions treat OAuth2 expires_in durations as relative seconds."""
+    session = WideskyHaystackSession(
+        uri="https://ws.local",
+        username="user",
+        password="pass",
+        client_id="cid",
+        client_secret="csecret",
+    )
+
+    with patch(
+        "pyhaystack_async.client.widesky.authenticate_widesky",
+        new=AsyncMock(
+            return_value={
+                "token_type": "Bearer",
+                "access_token": "token123",
+                "expires_in": 3600,
+            }
+        ),
+    ):
+        try:
+            await session._authenticate()
+            assert session.is_logged_in is True
+            assert session._client.headers == {"Authorization": "Bearer token123"}
+        finally:
+            await session.close()

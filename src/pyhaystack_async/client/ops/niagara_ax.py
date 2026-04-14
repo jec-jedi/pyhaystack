@@ -10,8 +10,7 @@ from __future__ import annotations
 import re
 
 from ...client.http.auth import BasicAuthenticationCredentials
-from ...client.http.client import AsyncHttpClient, HTTPResponse
-from ...client.http.exceptions import HTTPStatusError
+from ...client.http.client import AsyncHttpClient
 
 _LOGIN_RE = re.compile(r"login", re.IGNORECASE)
 
@@ -26,25 +25,16 @@ async def authenticate_niagara_ax(
     Returns (auth_credentials, cookies) on success.
     Raises on failure.
     """
-    base_uri = client.uri or ""
-
     # Phase 1: GET /login to obtain session cookie
-    try:
-        response = await client.request(
-            "GET",
-            f"{base_uri}login",
-            cookies={},
-            headers={},
-            exclude_cookies=True,
-            exclude_headers=True,
-            accept_status={200, 302, 404},
-        )
-    except HTTPStatusError as e:
-        if e.status != 404:
-            raise
-        response = HTTPResponse(
-            status_code=404, headers={}, body=b"", cookies={}
-        )
+    response = await client.request(
+        "GET",
+        "login",
+        cookies={},
+        headers={},
+        exclude_cookies=True,
+        exclude_headers=True,
+        accept_status={200, 302, 404},
+    )
 
     cookies = dict(response.cookies)
 
@@ -52,33 +42,28 @@ async def authenticate_niagara_ax(
     niagara_session = cookies.get("niagara_session", "")
     auth = BasicAuthenticationCredentials(username, password)
 
-    try:
-        login_resp = await client.request(
-            "POST",
-            f"{base_uri}login",
-            params={
-                "token": "",
-                "scheme": "cookieDigest",
-                "absPathBase": "/",
-                "content-type": "application/x-niagara-login-support",
-                "Referer": f"{base_uri}login/",
-                "accept": "text/zinc; charset=utf-8",
-                "cookiePostfix": niagara_session,
-            },
-            headers={},
-            cookies=cookies,
-            auth=auth,
-            exclude_cookies=True,
-            accept_status={200, 302, 404},
-        )
-    except HTTPStatusError as e:
-        if e.status != 404:
-            raise
-
-        # 404 is acceptable for some NiagaraAX versions
+    login_resp = await client.request(
+        "POST",
+        "login",
+        params={
+            "token": "",
+            "scheme": "cookieDigest",
+            "absPathBase": "/",
+            "content-type": "application/x-niagara-login-support",
+            "Referer": f"{client.uri or ''}login/",
+            "accept": "text/zinc; charset=utf-8",
+            "cookiePostfix": niagara_session,
+        },
+        headers={},
+        cookies=cookies,
+        auth=auth,
+        exclude_cookies=True,
+        accept_status={200, 302, 404},
+    )
+    if login_resp.status_code == 404:
         return auth, cookies
 
-    if _LOGIN_RE.match(login_resp.text):
+    if _LOGIN_RE.search(login_resp.text):
         raise IOError("NiagaraAX login failed — response contains 'login'")
 
     # Merge any new cookies from login response

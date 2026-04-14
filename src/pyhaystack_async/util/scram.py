@@ -13,6 +13,10 @@ from binascii import hexlify, unhexlify
 from hashlib import pbkdf2_hmac, sha256
 
 
+def _urlsafe_b64decode_padded(value: str) -> bytes:
+    return urlsafe_b64decode(value + ("=" * (-len(value) % 4)))
+
+
 def get_nonce() -> str:
     """Generate a 64-char hex nonce (32 random bytes)."""
     return os.urandom(32).hex()
@@ -40,7 +44,7 @@ def salted_password(
     dk = pbkdf2_hmac(
         algorithm_name,
         password.encode(),
-        urlsafe_b64decode(salt),
+        _urlsafe_b64decode_padded(salt),
         int(iterations),
     )
     return hexlify(dk).decode()
