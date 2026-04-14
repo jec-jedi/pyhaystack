@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 import ssl
@@ -82,6 +83,7 @@ class AsyncHttpClient:
         self.log = log
         self._client: httpx.AsyncClient | None = None
         self._client_proxy: str | None = None
+        self._client_lock: asyncio.Lock = asyncio.Lock()
 
     def _resolve_verify(self, tls_verify: bool | str | None = None) -> bool | ssl.SSLContext:
         resolved = self.tls_verify if tls_verify is None else tls_verify
@@ -122,16 +124,17 @@ class AsyncHttpClient:
         )
 
     async def _ensure_client(self, *, proxy: str | None = None) -> httpx.AsyncClient:
-        if (
-            self._client is None
-            or self._client.is_closed
-            or self._client_proxy != proxy
-        ):
-            if self._client is not None and not self._client.is_closed:
-                await self._client.aclose()
-            self._client = self._build_httpx_client(proxy=proxy)
-            self._client_proxy = proxy
-        return self._client
+        async with self._client_lock:
+            if (
+                self._client is None
+                or self._client.is_closed
+                or self._client_proxy != proxy
+            ):
+                if self._client is not None and not self._client.is_closed:
+                    await self._client.aclose()
+                self._client = self._build_httpx_client(proxy=proxy)
+                self._client_proxy = proxy
+            return self._client
 
     async def close(self) -> None:
         if self._client and not self._client.is_closed:

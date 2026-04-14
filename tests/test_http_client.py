@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+
 import httpx
 import pytest
 import respx
@@ -163,3 +165,25 @@ def test_resolve_proxy_prefers_scheme_match():
 
     assert client._resolve_proxy("https://example.com/api") == "http://proxy-https.local:8443"
     assert client._resolve_proxy("http://example.com/api") == "http://proxy-all.local:8080"
+
+
+@pytest.mark.asyncio
+async def test_concurrent_requests_no_client_teardown():
+    """Concurrent requests do not close a client that another task is using."""
+    with respx.mock:
+        respx.get("https://example.com/api/a").mock(
+            return_value=httpx.Response(200, text="a")
+        )
+        respx.get("https://example.com/api/b").mock(
+            return_value=httpx.Response(200, text="b")
+        )
+        client = AsyncHttpClient(uri="https://example.com/")
+        try:
+            resp_a, resp_b = await asyncio.gather(
+                client.get("api/a"),
+                client.get("api/b"),
+            )
+            assert resp_a.text == "a"
+            assert resp_b.text == "b"
+        finally:
+            await client.close()
