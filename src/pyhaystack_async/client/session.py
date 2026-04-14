@@ -415,10 +415,9 @@ class HaystackSession:
 
     def _parse_grid(self, response: HTTPResponse, mode: str) -> hszinc.Grid:
         """Parse a Haystack grid from the HTTP response body."""
-        grids = hszinc.parse(response.body.decode("utf-8", errors="replace"), mode=mode)
-        if not grids:
+        grid = hszinc.parse(response.body.decode("utf-8", errors="replace"), mode=mode)
+        if grid is None:
             raise HaystackError("Empty response from server")
-        grid = grids[0]
         if "err" in grid.metadata:
             dis = grid.metadata.get("dis", "Unknown error")
             tb = grid.metadata.get("errTrace")
