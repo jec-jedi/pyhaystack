@@ -208,6 +208,11 @@ class HaystackSession:
             args["val"] = val
             if who:
                 args["who"] = who
+            else:
+                if self._client.auth and hasattr(self._client.auth, "username"):
+                    args["who"] = self._client.auth.username
+                else:
+                    args["who"] = "pyhaystack-async"
             if duration:
                 args["duration"] = duration
         return await self._get_grid("pointWrite", args=args)
