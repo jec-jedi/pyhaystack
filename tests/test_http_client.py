@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+import ssl
+from unittest.mock import patch
 
+import certifi
 import httpx
 import pytest
 import respx
@@ -165,6 +168,77 @@ def test_resolve_proxy_prefers_scheme_match():
 
     assert client._resolve_proxy("https://example.com/api") == "http://proxy-https.local:8443"
     assert client._resolve_proxy("http://example.com/api") == "http://proxy-all.local:8080"
+
+
+def test_default_tls_resolution_keeps_legacy_mode_disabled():
+    """The default uses httpx verification without enabling legacy TLS."""
+    client = AsyncHttpClient()
+
+    assert client.legacy_tls is False
+    assert client._resolve_verify() is True
+
+
+def test_ssl_context_is_preserved():
+    """A caller-provided context is passed through unchanged."""
+    context = ssl.create_default_context()
+    client = AsyncHttpClient(tls_verify=context, legacy_tls=True)
+
+    assert client._resolve_verify() is context
+
+
+def test_ca_file_resolution_keeps_certificate_verification():
+    """A CA-file path still creates a verified context."""
+    client = AsyncHttpClient(tls_verify=certifi.where())
+
+    context = client._resolve_verify()
+
+    assert isinstance(context, ssl.SSLContext)
+    assert context.verify_mode == ssl.CERT_REQUIRED
+    assert context.check_hostname is True
+
+
+def test_legacy_tls_builds_compatible_verified_context():
+    """Legacy TLS lowers protocol and cipher restrictions without disabling verification."""
+    client = AsyncHttpClient(legacy_tls=True)
+
+    context = client._resolve_verify()
+
+    assert isinstance(context, ssl.SSLContext)
+    assert context.minimum_version == ssl.TLSVersion.TLSv1
+    assert context.maximum_version == ssl.TLSVersion.MAXIMUM_SUPPORTED
+    assert context.verify_mode == ssl.CERT_REQUIRED
+    assert context.check_hostname is True
+
+
+def test_legacy_tls_false_disables_context_verification():
+    """Legacy TLS can explicitly disable certificate and hostname verification."""
+    client = AsyncHttpClient(tls_verify=False, legacy_tls=True)
+
+    context = client._resolve_verify()
+
+    assert isinstance(context, ssl.SSLContext)
+    assert context.verify_mode == ssl.CERT_NONE
+    assert context.check_hostname is False
+
+
+def test_legacy_tls_passes_context_and_certificate_to_httpx():
+    """HTTPX receives the generated verification context and existing client cert."""
+    client = AsyncHttpClient(legacy_tls=True, tls_cert="client.pem")
+
+    with patch("pyhaystack_async.client.http.client.httpx.AsyncClient") as async_client:
+        client._build_httpx_client()
+
+    kwargs = async_client.call_args.kwargs
+    assert isinstance(kwargs["verify"], ssl.SSLContext)
+    assert kwargs["cert"] == "client.pem"
+
+
+def test_invalid_legacy_ca_file_raises():
+    """Invalid CA-file configuration remains visible to the caller."""
+    client = AsyncHttpClient(tls_verify="/missing/ca.pem", legacy_tls=True)
+
+    with pytest.raises((OSError, ssl.SSLError)):
+        client._resolve_verify()
 
 
 @pytest.mark.asyncio

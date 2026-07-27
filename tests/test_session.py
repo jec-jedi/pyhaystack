@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ssl
 from unittest.mock import AsyncMock, patch
 
 import hszinc
@@ -9,6 +10,10 @@ import pytest
 
 from pyhaystack_async.client.http.client import HTTPResponse
 from pyhaystack_async.client.loader import connect, get_implementation
+from pyhaystack_async.client.niagara import (
+    Niagara4HaystackSession,
+    NiagaraHaystackSession,
+)
 from pyhaystack_async.client.session import HaystackSession
 from pyhaystack_async.client.widesky import WideskyHaystackSession
 
@@ -60,6 +65,35 @@ def test_loader_unknown_raises():
     """Test unknown implementation raises ImportError."""
     with pytest.raises(ImportError):
         get_implementation("nonexistent_platform")
+
+
+@pytest.mark.parametrize("session_class", [NiagaraHaystackSession, Niagara4HaystackSession])
+def test_niagara_sessions_forward_tls_http_args(session_class):
+    """Both Niagara session constructors retain the shared client's TLS settings."""
+    context = ssl.create_default_context()
+    session = session_class(
+        uri="https://example.com/",
+        username="u",
+        password="p",
+        http_args={"tls_verify": context, "legacy_tls": True},
+    )
+
+    assert session._client.tls_verify is context
+    assert session._client.legacy_tls is True
+    assert session._client._resolve_verify() is context
+
+
+@pytest.mark.parametrize("session_class", [NiagaraHaystackSession, Niagara4HaystackSession])
+def test_niagara_sessions_keep_secure_tls_defaults(session_class):
+    """Niagara sessions retain modern verified TLS unless explicitly configured."""
+    session = session_class(
+        uri="https://example.com/",
+        username="u",
+        password="p",
+    )
+
+    assert session._client.legacy_tls is False
+    assert session._client._resolve_verify() is True
 
 
 @pytest.mark.asyncio

@@ -67,7 +67,8 @@ class AsyncHttpClient:
         auth: BasicAuthenticationCredentials | DigestAuthenticationCredentials | None = None,
         timeout: float | None = 30.0,
         proxies: dict[str, str] | None = None,
-        tls_verify: bool | str = True,
+        tls_verify: bool | str | ssl.SSLContext = True,
+        legacy_tls: bool = False,
         tls_cert: str | None = None,
         log: logging.Logger | None = None,
     ):
@@ -79,19 +80,44 @@ class AsyncHttpClient:
         self.timeout = timeout
         self.proxies = proxies
         self.tls_verify = tls_verify
+        self.legacy_tls = legacy_tls
         self.tls_cert = tls_cert
         self.log = log
         self._client: httpx.AsyncClient | None = None
         self._client_proxy: str | None = None
         self._client_lock: asyncio.Lock = asyncio.Lock()
 
-    def _resolve_verify(self, tls_verify: bool | str | None = None) -> bool | ssl.SSLContext:
+    def _resolve_verify(
+        self,
+        tls_verify: bool | str | ssl.SSLContext | None = None,
+    ) -> bool | ssl.SSLContext:
         resolved = self.tls_verify if tls_verify is None else tls_verify
+        if isinstance(resolved, ssl.SSLContext):
+            return resolved
+        if self.legacy_tls:
+            return self._build_legacy_context(resolved)
         if isinstance(resolved, str):
             return ssl.create_default_context(cafile=resolved)
         if not resolved:
             return False
         return True
+
+    @staticmethod
+    def _build_legacy_context(tls_verify: bool | str) -> ssl.SSLContext:
+        context = ssl.create_default_context(
+            cafile=tls_verify if isinstance(tls_verify, str) else None,
+        )
+        context.minimum_version = ssl.TLSVersion.TLSv1
+        context.maximum_version = ssl.TLSVersion.MAXIMUM_SUPPORTED
+        context.set_ciphers("DEFAULT:@SECLEVEL=0")
+        if hasattr(ssl, "OP_LEGACY_SERVER_CONNECT"):
+            context.options |= ssl.OP_LEGACY_SERVER_CONNECT
+
+        if not tls_verify:
+            context.check_hostname = False
+            context.verify_mode = ssl.CERT_NONE
+
+        return context
 
     def _resolve_proxy(self, uri: str) -> str | None:
         if not self.proxies:
@@ -111,7 +137,7 @@ class AsyncHttpClient:
     def _build_httpx_client(
         self,
         *,
-        tls_verify: bool | str | None = None,
+        tls_verify: bool | str | ssl.SSLContext | None = None,
         proxy: str | None = None,
     ) -> httpx.AsyncClient:
         return httpx.AsyncClient(
@@ -152,7 +178,7 @@ class AsyncHttpClient:
         cookies: dict[str, str] | None = None,
         auth: BasicAuthenticationCredentials | DigestAuthenticationCredentials | None = None,
         timeout: float | None = None,
-        tls_verify: bool | str | None = None,
+        tls_verify: bool | str | ssl.SSLContext | None = None,
         accept_status: set[int] | None = None,
         exclude_params: bool | None = None,
         exclude_headers: bool | None = None,
