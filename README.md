@@ -24,6 +24,13 @@ async def main():
 asyncio.run(main())
 ```
 
+Fin uses the `fin` implementation and sends point writes as Zinc POST requests:
+
+```python
+async with connect("fin", uri="https://...", username="admin", password="...", project="demo") as session:
+    result = await session.point_write("p:thgr:r:323bd44b-6c859c1a", level=8, val=42.0)
+```
+
 ## HTTP and TLS Configuration
 
 HTTP options are passed through `http_args` to `connect()` and the session
@@ -63,6 +70,7 @@ protocol- and cipher-level attacks and must not become a default setting.
 | `n4`        | `Niagara4HaystackSession`       | SCRAM-SHA256       |
 | `skyspark2` | `SkysparkHaystackSession`       | HMAC-SHA1          |
 | `skyspark`  | `SkysparkScramHaystackSession`  | SCRAM bearer token |
+| `fin`       | `FinSession`                    | SCRAM bearer token |
 | `widesky`   | `WideskyHaystackSession`        | OAuth2 M2M         |
 
 ## Development
