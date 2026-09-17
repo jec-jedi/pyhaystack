@@ -151,11 +151,7 @@ class AsyncHttpClient:
 
     async def _ensure_client(self, *, proxy: str | None = None) -> httpx.AsyncClient:
         async with self._client_lock:
-            if (
-                self._client is None
-                or self._client.is_closed
-                or self._client_proxy != proxy
-            ):
+            if self._client is None or self._client.is_closed or self._client_proxy != proxy:
                 if self._client is not None and not self._client.is_closed:
                     await self._client.aclose()
                 self._client = self._build_httpx_client(proxy=proxy)

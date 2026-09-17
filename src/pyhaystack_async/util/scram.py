@@ -34,9 +34,7 @@ def hash_sha256(data: bytes, algorithm=sha256) -> str:
     return h.hexdigest()
 
 
-def salted_password(
-    salt: str, iterations: int | str, algorithm_name: str, password: str
-) -> str:
+def salted_password(salt: str, iterations: int | str, algorithm_name: str, password: str) -> str:
     """Derive salted password using PBKDF2 with URL-safe base64 salt.
 
     Used by SkySpark SCRAM.

@@ -11,6 +11,7 @@ class AuthenticationCredentials:
 @dataclass
 class BasicAuthenticationCredentials(AuthenticationCredentials):
     """HTTP Basic authentication credentials."""
+
     username: str
     password: str
 
@@ -18,5 +19,6 @@ class BasicAuthenticationCredentials(AuthenticationCredentials):
 @dataclass
 class DigestAuthenticationCredentials(AuthenticationCredentials):
     """HTTP Digest authentication credentials."""
+
     username: str
     password: str

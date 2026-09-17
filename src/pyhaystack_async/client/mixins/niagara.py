@@ -7,6 +7,7 @@ from typing import Any
 
 try:
     import pandas as pd
+
     HAVE_PANDAS = True
 except ImportError:
     HAVE_PANDAS = False

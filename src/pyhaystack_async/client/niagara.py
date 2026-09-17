@@ -33,9 +33,7 @@ class NiagaraHaystackSession(BQLMixin, EncodingMixin, HaystackSession):
         return self._authenticated
 
     async def _authenticate(self) -> None:
-        auth, cookies = await authenticate_niagara_ax(
-            self._client, self._username, self._password
-        )
+        auth, cookies = await authenticate_niagara_ax(self._client, self._username, self._password)
         self._authenticated = True
         self._client.auth = auth
         self._client.cookies = cookies
@@ -82,9 +80,7 @@ class Niagara4HaystackSession(BQLMixin, EncodingMixin, HaystackSession):
         return self._authenticated
 
     async def _authenticate(self) -> None:
-        cookies = await authenticate_niagara4_scram(
-            self._client, self._username, self._password
-        )
+        cookies = await authenticate_niagara4_scram(self._client, self._username, self._password)
         self._authenticated = True
         self._client.cookies = cookies
 

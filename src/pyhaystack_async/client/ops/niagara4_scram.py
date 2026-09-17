@@ -92,9 +92,7 @@ async def authenticate_niagara4_scram(
     server_iterations = scram.regex_after_equal(parts[2])
 
     # Step 4: Client final message
-    salted_pwd = scram.salted_password_hex_salt(
-        server_salt, server_iterations, "sha256", password
-    )
+    salted_pwd = scram.salted_password_hex_salt(server_salt, server_iterations, "sha256", password)
 
     client_final_without_proof = f"c={standard_b64encode(b'n,,').decode()},r={server_nonce}"
     auth_msg = f"{client_first_msg},{server_first_msg},{client_final_without_proof}"

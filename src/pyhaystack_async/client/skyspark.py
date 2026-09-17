@@ -92,16 +92,27 @@ class SkysparkScramHaystackSession(EvalMixin, HaystackSession):
         self._client.headers = auth_headers
 
     async def _get_grid(
-        self, uri: str, *, exclude_cookies: bool | None = True, **kwargs: Any,
+        self,
+        uri: str,
+        *,
+        exclude_cookies: bool | None = True,
+        **kwargs: Any,
     ) -> hszinc.Grid:
         return await super()._get_grid(uri, exclude_cookies=exclude_cookies, **kwargs)
 
     async def _post_grid(
-        self, uri: str, grid: hszinc.Grid, *,
-        exclude_cookies: bool | None = True, **kwargs: Any,
+        self,
+        uri: str,
+        grid: hszinc.Grid,
+        *,
+        exclude_cookies: bool | None = True,
+        **kwargs: Any,
     ) -> hszinc.Grid:
         return await super()._post_grid(
-            uri, grid, exclude_cookies=exclude_cookies, **kwargs,
+            uri,
+            grid,
+            exclude_cookies=exclude_cookies,
+            **kwargs,
         )
 
     async def his_read(self, point, rng, **kwargs: Any) -> hszinc.Grid:

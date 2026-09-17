@@ -13,13 +13,17 @@ Modern async Python client for [Project Haystack](https://www.project-haystack.o
 import asyncio
 from pyhaystack_async.client.loader import connect
 
+
 async def main():
-    async with connect("skyspark", uri="https://...", username="admin", password="...", project="demo") as session:
+    async with connect(
+        "skyspark", uri="https://...", username="admin", password="...", project="demo"
+    ) as session:
         about = await session.about()
         print(about)
 
         grid = await session.read(filter_expr="site")
         print(grid)
+
 
 asyncio.run(main())
 ```
@@ -27,7 +31,9 @@ asyncio.run(main())
 Fin uses the `fin` implementation and sends point writes as Zinc POST requests:
 
 ```python
-async with connect("fin", uri="https://...", username="admin", password="...", project="demo") as session:
+async with connect(
+    "fin", uri="https://...", username="admin", password="...", project="demo"
+) as session:
     result = await session.point_write("p:thgr:r:323bd44b-6c859c1a", level=8, val=42.0)
 ```
 
@@ -53,7 +59,7 @@ certificate verification. Use `tls_verify=False` only when the server cannot
 provide a trusted certificate:
 
 ```python
-http_args={"legacy_tls": True, "tls_verify": False}
+http_args = {"legacy_tls": True, "tls_verify": False}
 ```
 
 For a custom trust policy, pass a configured `ssl.SSLContext` as

@@ -115,9 +115,7 @@ async def authenticate_skyspark_scram(
         raise ValueError("SkySpark SCRAM: server returned invalid nonce")
 
     # Step 4: Compute client proof and send final message
-    salted_pwd = scram.salted_password(
-        server_salt, server_iterations, algorithm_name, password
-    )
+    salted_pwd = scram.salted_password(server_salt, server_iterations, algorithm_name, password)
 
     client_final_no_proof = f"c={standard_b64encode(b'n,,').decode()},r={server_nonce}"
     auth_msg = f"{client_second_msg},{server_first_msg},{client_final_no_proof}"

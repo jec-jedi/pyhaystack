@@ -36,11 +36,13 @@ async def authenticate_widesky(
         "Content-Type": "application/json",
     }
 
-    auth_body = json.dumps({
-        "username": username,
-        "password": password,
-        "grant_type": "password",
-    }).encode()
+    auth_body = json.dumps(
+        {
+            "username": username,
+            "password": password,
+            "grant_type": "password",
+        }
+    ).encode()
 
     resp = await client.request(
         "POST",
