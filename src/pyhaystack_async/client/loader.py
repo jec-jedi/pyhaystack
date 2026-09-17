@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 from importlib import import_module
-from typing import Any
+from typing import Any, cast
+
+from .session import HaystackSession
 
 # Short aliases → module.ClassName within this package
 IMPLEMENTATION_ALIAS: dict[str, str] = {
@@ -17,10 +19,10 @@ IMPLEMENTATION_ALIAS: dict[str, str] = {
     "widesky": "widesky.WideskyHaystackSession",
 }
 
-_cache: dict[str, type] = {}
+_cache: dict[str, type[HaystackSession]] = {}
 
 
-def get_implementation(name: str) -> type:
+def get_implementation(name: str) -> type[HaystackSession]:
     """Resolve a session class by short alias or dotted path."""
     name = IMPLEMENTATION_ALIAS.get(name, name)
     if name in _cache:
@@ -37,15 +39,16 @@ def get_implementation(name: str) -> type:
     except ImportError:
         mod = import_module(mod_name)
 
-    cls = getattr(mod, cls_name, None)
-    if cls is None:
+    candidate = getattr(mod, cls_name, None)
+    if candidate is None:
         raise ImportError(f"No class {cls_name} in module {mod_name}")
 
+    cls = cast(type[HaystackSession], candidate)
     _cache[name] = cls
     return cls
 
 
-def connect(implementation: str, *args: Any, **kwargs: Any) -> Any:
+def connect(implementation: str, *args: Any, **kwargs: Any) -> HaystackSession:
     """Create a session instance by name.
 
     Usage::
@@ -55,5 +58,5 @@ def connect(implementation: str, *args: Any, **kwargs: Any) -> Any:
             username="<username>", password="<password>", project="<project>",
         )
     """
-    cls = get_implementation(implementation) if isinstance(implementation, str) else implementation
+    cls = get_implementation(implementation)
     return cls(*args, **kwargs)

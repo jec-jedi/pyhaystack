@@ -43,7 +43,7 @@ class HaystackSession:
         if bool(http_args.pop("debug", None)) and "log" not in http_args:
             http_args["log"] = log.getChild("http")
 
-        self._client = AsyncHttpClient(uri=uri, **http_args)
+        self._client = AsyncHttpClient(uri=uri.rstrip("/"), **http_args)
         self._api_dir = api_dir
         self._grid_format = grid_format
 
@@ -58,7 +58,6 @@ class HaystackSession:
         self._cache_lock = asyncio.Lock()
         self._cache_expiry = cache_expiry
         self._grid_cache: dict[str, tuple[float, Any]] = {}
-
         hszinc.use_pint(pint)
 
     # --- Lifecycle ----------------------------------------------------------
@@ -223,9 +222,7 @@ class HaystackSession:
         rng: Any,
     ) -> hszinc.Grid:
         if isinstance(rng, slice):
-            str_rng = ",".join(
-                hszinc.dump_scalar(p) for p in (rng.start, rng.stop)
-            )
+            str_rng = ",".join(hszinc.dump_scalar(p) for p in (rng.start, rng.stop))
         elif not isinstance(rng, str):
             str_rng = hszinc.dump_scalar(rng)
         else:
@@ -322,8 +319,7 @@ class HaystackSession:
         params: dict[str, str] | None = None
         if args:
             params = {
-                k: hszinc.dump_scalar(v) if not isinstance(v, str) else v
-                for k, v in args.items()
+                k: hszinc.dump_scalar(v) if not isinstance(v, str) else v for k, v in args.items()
             }
 
         last_exc: Exception | None = None
