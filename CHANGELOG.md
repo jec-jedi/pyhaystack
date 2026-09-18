@@ -2,7 +2,7 @@
 
 ## 4.2.0 - 2026-09-16
 
-- Added `FinSession` with Zinc POST point writes through the `fin` loader alias.
+- Added Zinc POST point writes to the SCRAM SkySpark session.
 
 ## 4.1.0 - 2026-07-27
 

@@ -15,7 +15,6 @@ IMPLEMENTATION_ALIAS: dict[str, str] = {
     "n4": "niagara.Niagara4HaystackSession",
     "skyspark2": "skyspark.SkysparkHaystackSession",
     "skyspark": "skyspark.SkysparkScramHaystackSession",
-    "fin": "fin.FinSession",
     "widesky": "widesky.WideskyHaystackSession",
 }
 

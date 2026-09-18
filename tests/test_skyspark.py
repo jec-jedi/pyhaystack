@@ -1,4 +1,4 @@
-"""Tests for the Fin session."""
+"""Tests for SkySpark SCRAM point writes."""
 
 from __future__ import annotations
 
@@ -7,11 +7,11 @@ import httpx
 import pytest
 import respx
 
-from pyhaystack_async.client.fin import FinSession
 from pyhaystack_async.client.http.exceptions import HTTPStatusError
 from pyhaystack_async.client.loader import get_implementation
+from pyhaystack_async.client.skyspark import SkysparkScramHaystackSession
 
-BASE_URI = "https://fin.example/"
+BASE_URI = "https://skyspark.example/"
 POINT = "p:thgr:r:323bd44b-6c859c1a"
 
 
@@ -27,12 +27,12 @@ def _response_grid() -> bytes:
     return _dump_grid(grid)
 
 
-def test_fin_loader_alias():
-    assert get_implementation("fin") is FinSession
+def test_skyspark_loader_alias():
+    assert get_implementation("skyspark") is SkysparkScramHaystackSession
 
 
 @pytest.mark.asyncio
-async def test_fin_point_write_posts_zinc_grid():
+async def test_skyspark_point_write_posts_zinc_grid():
     with respx.mock:
         route = respx.post(f"{BASE_URI}api/demo/pointWrite").mock(
             return_value=httpx.Response(
@@ -41,9 +41,9 @@ async def test_fin_point_write_posts_zinc_grid():
                 headers={"Content-Type": "text/zinc"},
             )
         )
-        session = FinSession(
+        session = SkysparkScramHaystackSession(
             uri=BASE_URI,
-            username="fin-user",
+            username="sky-user",
             password="secret",
             project="demo",
         )
@@ -60,6 +60,7 @@ async def test_fin_point_write_posts_zinc_grid():
         finally:
             await session.close()
 
+
         assert route.called
         request = route.calls[0].request
         assert request.method == "POST"
@@ -72,20 +73,20 @@ async def test_fin_point_write_posts_zinc_grid():
         assert row["id"].name == POINT
         assert row["level"] == 8
         assert row["val"] == 12.5
-        assert row["who"] == "fin-user"
+        assert row["who"] == "sky-user"
         assert row["duration"] == "15min"
         assert result[0]["id"].name == POINT
 
 
 @pytest.mark.asyncio
-async def test_fin_point_write_omits_write_fields_without_level():
+async def test_skyspark_point_write_omits_write_fields_without_level():
     with respx.mock:
         route = respx.post(f"{BASE_URI}api/demo/pointWrite").mock(
             return_value=httpx.Response(200, content=_response_grid())
         )
-        session = FinSession(
+        session = SkysparkScramHaystackSession(
             uri=BASE_URI,
-            username="fin-user",
+            username="sky-user",
             password="secret",
             project="demo",
         )
@@ -96,20 +97,22 @@ async def test_fin_point_write_omits_write_fields_without_level():
         finally:
             await session.close()
 
-        sent_grid = hszinc.parse(route.calls[0].request.content.decode(), mode=hszinc.MODE_ZINC)
+        sent_grid = hszinc.parse(
+            route.calls[0].request.content.decode(), mode=hszinc.MODE_ZINC
+        )
         assert list(sent_grid.column) == ["id"]
         assert sent_grid[0]["id"].name == POINT
 
 
 @pytest.mark.asyncio
-async def test_fin_point_write_raises_for_haystack_http_errors():
+async def test_skyspark_point_write_raises_for_haystack_http_errors():
     with respx.mock:
         respx.post(f"{BASE_URI}api/demo/pointWrite").mock(
             return_value=httpx.Response(500, text="server error")
         )
-        session = FinSession(
+        session = SkysparkScramHaystackSession(
             uri=BASE_URI,
-            username="fin-user",
+            username="sky-user",
             password="secret",
             project="demo",
         )
