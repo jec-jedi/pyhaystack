@@ -17,6 +17,7 @@ from pyhaystack_async.client.http.client import AsyncHttpClient
 # NiagaraAX
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_niagara_ax_auth():
     """Two-phase NiagaraAX authentication."""
@@ -53,9 +54,7 @@ async def test_niagara_ax_auth_failure():
     from pyhaystack_async.client.ops.niagara_ax import authenticate_niagara_ax
 
     with respx.mock:
-        respx.get("https://niagara.local/login").mock(
-            return_value=httpx.Response(200, text="ok")
-        )
+        respx.get("https://niagara.local/login").mock(return_value=httpx.Response(200, text="ok"))
         respx.post("https://niagara.local/login").mock(
             return_value=httpx.Response(200, text="login page still showing")
         )
@@ -74,9 +73,7 @@ async def test_niagara_ax_auth_failure_html_page():
     from pyhaystack_async.client.ops.niagara_ax import authenticate_niagara_ax
 
     with respx.mock:
-        respx.get("https://niagara.local/login").mock(
-            return_value=httpx.Response(200, text="ok")
-        )
+        respx.get("https://niagara.local/login").mock(return_value=httpx.Response(200, text="ok"))
         respx.post("https://niagara.local/login").mock(
             return_value=httpx.Response(
                 200,
@@ -133,12 +130,8 @@ async def test_niagara4_scram_auth():
             respx.get("https://niagara.local/prelogin?clear=true").mock(
                 return_value=httpx.Response(200)
             )
-            respx.post("https://niagara.local/prelogin").mock(
-                return_value=httpx.Response(200)
-            )
-            respx.post("https://niagara.local/j_security_check").mock(
-                side_effect=security_check
-            )
+            respx.post("https://niagara.local/prelogin").mock(return_value=httpx.Response(200))
+            respx.post("https://niagara.local/j_security_check").mock(side_effect=security_check)
 
             client = AsyncHttpClient(uri="https://niagara.local")
             try:
@@ -177,12 +170,8 @@ async def test_niagara4_scram_auth_signature_mismatch():
             respx.get("https://niagara.local/prelogin?clear=true").mock(
                 return_value=httpx.Response(200)
             )
-            respx.post("https://niagara.local/prelogin").mock(
-                return_value=httpx.Response(200)
-            )
-            respx.post("https://niagara.local/j_security_check").mock(
-                side_effect=security_check
-            )
+            respx.post("https://niagara.local/prelogin").mock(return_value=httpx.Response(200))
+            respx.post("https://niagara.local/j_security_check").mock(side_effect=security_check)
 
             client = AsyncHttpClient(uri="https://niagara.local")
             try:
@@ -195,6 +184,7 @@ async def test_niagara4_scram_auth_signature_mismatch():
 # ---------------------------------------------------------------------------
 # SkySpark legacy
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_skyspark_legacy_auth():
@@ -262,12 +252,16 @@ async def test_skyspark_scram_auth():
         if auth_header.startswith("HELLO username="):
             return httpx.Response(
                 401,
-                headers={"WWW-Authenticate": "handshakeToken=hs123, hash=SHA-256"},
+                headers={"WWW-Authenticate": "scram handshakeToken=hs123, hash=SHA-256"},
             )
-        if auth_header.startswith("SCRAM handshakeToken=hs123, data="):
+        if auth_header.startswith("SCRAM data="):
             return httpx.Response(
                 401,
-                headers={"WWW-Authenticate": f"data={server_data}"},
+                headers={
+                    "WWW-Authenticate": (
+                        f"scram data={server_data}, handshakeToken=hs123, hash=SHA-256"
+                    )
+                },
             )
         if auth_header.startswith("scram handshaketoken=hs123,data="):
             return httpx.Response(
@@ -281,10 +275,7 @@ async def test_skyspark_scram_auth():
         return_value=nonce,
     ):
         with respx.mock:
-            respx.get("https://sky.local/user/login").mock(
-                return_value=httpx.Response(200, text="ok")
-            )
-            route = respx.get("https://sky.local/ui").mock(side_effect=ui_callback)
+            route = respx.get("https://sky.local/user/auth").mock(side_effect=ui_callback)
 
             client = AsyncHttpClient(uri="https://sky.local")
             try:
@@ -310,12 +301,16 @@ async def test_skyspark_scram_auth_invalid_nonce():
         if auth_header.startswith("HELLO username="):
             return httpx.Response(
                 401,
-                headers={"WWW-Authenticate": "handshakeToken=hs123, hash=SHA-256"},
+                headers={"WWW-Authenticate": "scram handshakeToken=hs123, hash=SHA-256"},
             )
-        if auth_header.startswith("SCRAM handshakeToken=hs123, data="):
+        if auth_header.startswith("SCRAM data="):
             return httpx.Response(
                 401,
-                headers={"WWW-Authenticate": f"data={server_data}"},
+                headers={
+                    "WWW-Authenticate": (
+                        f"scram data={server_data}, handshakeToken=hs123, hash=SHA-256"
+                    )
+                },
             )
         raise AssertionError(f"Unexpected Authorization header: {auth_header!r}")
 
@@ -324,10 +319,7 @@ async def test_skyspark_scram_auth_invalid_nonce():
         return_value=nonce,
     ):
         with respx.mock:
-            respx.get("https://sky.local/user/login").mock(
-                return_value=httpx.Response(200, text="ok")
-            )
-            respx.get("https://sky.local/ui").mock(side_effect=ui_callback)
+            respx.get("https://sky.local/user/auth").mock(side_effect=ui_callback)
 
             client = AsyncHttpClient(uri="https://sky.local")
             try:
@@ -340,6 +332,7 @@ async def test_skyspark_scram_auth_invalid_nonce():
 # ---------------------------------------------------------------------------
 # WideSky OAuth2
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_widesky_auth():
@@ -391,8 +384,6 @@ async def test_widesky_auth_missing_field():
         client = AsyncHttpClient(uri="https://ws.local/")
         try:
             with pytest.raises(ValueError, match="missing access_token"):
-                await authenticate_widesky(
-                    client, "user", "pass", "cid", "csecret", "oauth2/token"
-                )
+                await authenticate_widesky(client, "user", "pass", "cid", "csecret", "oauth2/token")
         finally:
             await client.close()

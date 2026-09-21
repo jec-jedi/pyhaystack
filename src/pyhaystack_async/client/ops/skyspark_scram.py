@@ -1,10 +1,9 @@
 """SkySpark SCRAM-SHA256 async authentication with bearer token.
 
 Flow:
-1. GET /user/login → verify server available
-2. GET /ui with HELLO header → get algorithm + handshakeToken from 401 WWW-Authenticate
-3. GET /ui with SCRAM + clientFirstMessage → get server nonce/salt/iterations from 401
-4. GET /ui with computed client proof → get authToken from Authentication-Info header
+1. GET /user/auth with HELLO header → get algorithm + handshakeToken
+2. GET /user/auth with SCRAM client-first message → get server nonce/salt/iterations
+3. GET /user/auth with computed client proof → get authToken from Authentication-Info
 """
 
 from __future__ import annotations
@@ -23,6 +22,16 @@ def _challenge_header(headers: dict[str, str], name: str) -> str:
     return value
 
 
+def _challenge_params(value: str) -> dict[str, str]:
+    params: dict[str, str] = {}
+    for part in value.split(","):
+        if "=" not in part:
+            continue
+        key, param_value = part.strip().split("=", 1)
+        params[key.rsplit(" ", 1)[-1].lower()] = param_value.strip()
+    return params
+
+
 async def authenticate_skyspark_scram(
     client: AsyncHttpClient,
     username: str,
@@ -32,38 +41,31 @@ async def authenticate_skyspark_scram(
 
     Returns headers dict with Authorization bearer token.
     """
-    # Step 1: Test server availability
-    await client.request(
-        "GET",
-        "user/login",
-        cookies={},
-        headers={},
-        exclude_cookies=True,
-        exclude_headers=True,
-        accept_status={200, 302},
-    )
-
-    # Step 2: HELLO handshake
+    # Step 1: HELLO handshake
     nonce = scram.get_nonce()
     salt_username = scram.base64_no_padding(username)
     hello_msg = f"HELLO username={salt_username}"
 
     resp = await client.request(
         "GET",
-        "ui",
+        "user/auth",
         headers={"Authorization": hello_msg},
         exclude_cookies=True,
+        exclude_headers=True,
         accept_status={401, 303},
     )
     if resp.status_code not in {401, 303}:
         raise ValueError(f"SkySpark SCRAM: expected challenge, got HTTP {resp.status_code}")
 
     server_response = _challenge_header(resp.headers, "www-authenticate")
-    header_parts = [part.strip() for part in server_response.split(",")]
-    if len(header_parts) < 2:
-        raise ValueError(f"SkySpark SCRAM: malformed challenge: {server_response!r}")
-
-    algorithm_str = scram.regex_after_equal(header_parts[1]).replace("-", "").lower()
+    challenge = _challenge_params(server_response)
+    algorithm_str = challenge.get("hash")
+    if algorithm_str is None:
+        header_parts = [part.strip() for part in server_response.split(",")]
+        if len(header_parts) < 2:
+            raise ValueError(f"SkySpark SCRAM: malformed challenge: {server_response!r}")
+        algorithm_str = scram.regex_after_equal(header_parts[1])
+    algorithm_str = algorithm_str.replace("-", "").lower()
     if algorithm_str == "sha256":
         algorithm = sha256
         algorithm_name = "sha256"
@@ -73,16 +75,18 @@ async def authenticate_skyspark_scram(
     else:
         raise ValueError(f"Unsupported SCRAM algorithm: {algorithm_str}")
 
-    handshake_token = scram.regex_after_equal(header_parts[0])
+    handshake_token = challenge.get("handshaketoken")
+    if handshake_token is None:
+        raise ValueError(f"SkySpark SCRAM: missing handshakeToken in {server_response!r}")
 
-    # Step 3: SCRAM client second message
-    client_second_msg = f"n={username},r={nonce}"
-    client_second_msg_encoded = scram.base64_no_padding(client_second_msg)
-    auth_header = f"SCRAM handshakeToken={handshake_token}, data={client_second_msg_encoded}"
+    # Step 2: SCRAM client-first message
+    client_first_msg = f"n={username},r={nonce}"
+    client_first_msg_encoded = scram.base64_no_padding(f"n,,{client_first_msg}")
+    auth_header = f"SCRAM data={client_first_msg_encoded}, handshakeToken={handshake_token}"
 
     resp = await client.request(
         "GET",
-        "ui",
+        "user/auth",
         headers={"Authorization": auth_header},
         exclude_cookies=True,
         exclude_headers=True,
@@ -94,14 +98,15 @@ async def authenticate_skyspark_scram(
         )
 
     www_auth = _challenge_header(resp.headers, "www-authenticate")
-    tab_header = [part.strip() for part in www_auth.split(",")]
-    server_data = scram.regex_after_equal(tab_header[0])
+    server_data = _challenge_params(www_auth).get("data")
+    if server_data is None:
+        raise ValueError(f"SkySpark SCRAM: missing server data in {www_auth!r}")
 
     missing = len(server_data) % 4
     if missing:
         server_data += "=" * (4 - missing)
 
-    server_data_decoded = b64decode(server_data).decode()
+    server_data_decoded = b64decode(server_data, altchars=b"-_").decode()
     parts = server_data_decoded.split(",")
     if len(parts) < 3:
         raise ValueError(f"SkySpark SCRAM: malformed server data: {server_data_decoded!r}")
@@ -118,7 +123,7 @@ async def authenticate_skyspark_scram(
     salted_pwd = scram.salted_password(server_salt, server_iterations, algorithm_name, password)
 
     client_final_no_proof = f"c={standard_b64encode(b'n,,').decode()},r={server_nonce}"
-    auth_msg = f"{client_second_msg},{server_first_msg},{client_final_no_proof}"
+    auth_msg = f"{client_first_msg},{server_first_msg},{client_final_no_proof}"
     client_proof = scram.create_client_proof(salted_pwd, auth_msg, algorithm)
 
     client_final = f"{client_final_no_proof},p={client_proof}"
@@ -127,7 +132,7 @@ async def authenticate_skyspark_scram(
 
     resp = await client.request(
         "GET",
-        "ui",
+        "user/auth",
         headers={"Authorization": final_header},
         exclude_cookies=True,
         exclude_headers=True,
