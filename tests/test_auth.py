@@ -262,12 +262,16 @@ async def test_skyspark_scram_auth():
         if auth_header.startswith("HELLO username="):
             return httpx.Response(
                 401,
-                headers={"WWW-Authenticate": "handshakeToken=hs123, hash=SHA-256"},
+                headers={"WWW-Authenticate": "scram handshakeToken=hs123, hash=SHA-256"},
             )
-        if auth_header.startswith("SCRAM handshakeToken=hs123, data="):
+        if auth_header.startswith("SCRAM data="):
             return httpx.Response(
                 401,
-                headers={"WWW-Authenticate": f"data={server_data}"},
+                headers={
+                    "WWW-Authenticate": (
+                        f"scram data={server_data}, handshakeToken=hs123, hash=SHA-256"
+                    )
+                },
             )
         if auth_header.startswith("scram handshaketoken=hs123,data="):
             return httpx.Response(
@@ -281,10 +285,7 @@ async def test_skyspark_scram_auth():
         return_value=nonce,
     ):
         with respx.mock:
-            respx.get("https://sky.local/user/login").mock(
-                return_value=httpx.Response(200, text="ok")
-            )
-            route = respx.get("https://sky.local/ui").mock(side_effect=ui_callback)
+            route = respx.get("https://sky.local/user/auth").mock(side_effect=ui_callback)
 
             client = AsyncHttpClient(uri="https://sky.local")
             try:
@@ -310,12 +311,16 @@ async def test_skyspark_scram_auth_invalid_nonce():
         if auth_header.startswith("HELLO username="):
             return httpx.Response(
                 401,
-                headers={"WWW-Authenticate": "handshakeToken=hs123, hash=SHA-256"},
+                headers={"WWW-Authenticate": "scram handshakeToken=hs123, hash=SHA-256"},
             )
-        if auth_header.startswith("SCRAM handshakeToken=hs123, data="):
+        if auth_header.startswith("SCRAM data="):
             return httpx.Response(
                 401,
-                headers={"WWW-Authenticate": f"data={server_data}"},
+                headers={
+                    "WWW-Authenticate": (
+                        f"scram data={server_data}, handshakeToken=hs123, hash=SHA-256"
+                    )
+                },
             )
         raise AssertionError(f"Unexpected Authorization header: {auth_header!r}")
 
@@ -324,10 +329,7 @@ async def test_skyspark_scram_auth_invalid_nonce():
         return_value=nonce,
     ):
         with respx.mock:
-            respx.get("https://sky.local/user/login").mock(
-                return_value=httpx.Response(200, text="ok")
-            )
-            respx.get("https://sky.local/ui").mock(side_effect=ui_callback)
+            respx.get("https://sky.local/user/auth").mock(side_effect=ui_callback)
 
             client = AsyncHttpClient(uri="https://sky.local")
             try:
