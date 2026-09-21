@@ -60,7 +60,6 @@ async def test_skyspark_point_write_posts_zinc_grid():
         finally:
             await session.close()
 
-
         assert route.called
         request = route.calls[0].request
         assert request.method == "POST"
@@ -76,6 +75,116 @@ async def test_skyspark_point_write_posts_zinc_grid():
         assert row["who"] == "sky-user"
         assert row["duration"] == "15min"
         assert result[0]["id"].name == POINT
+
+
+@pytest.mark.asyncio
+async def test_skyspark_point_write_sends_attest_key():
+    with respx.mock:
+        route = respx.post(f"{BASE_URI}api/demo/pointWrite").mock(
+            return_value=httpx.Response(
+                200,
+                content=_response_grid(),
+                headers={"Content-Type": "text/zinc"},
+            )
+        )
+        session = SkysparkScramHaystackSession(
+            uri=BASE_URI,
+            username="sky-user",
+            password="secret",
+            project="demo",
+        )
+        session._authenticated = True
+        session._client.headers = {
+            "Authorization": "Bearer authToken=token123",
+            "Attest-Key": "attest123",
+        }
+
+        try:
+            await session.point_write(POINT, level=8, val=12.5)
+        finally:
+            await session.close()
+
+        request = route.calls[0].request
+        assert request.headers["authorization"] == "Bearer authToken=token123"
+        assert request.headers["attest-key"] == "attest123"
+        assert "cookie" not in request.headers
+
+
+@pytest.mark.asyncio
+async def test_skyspark_point_write_omits_attest_key_when_absent():
+    with respx.mock:
+        route = respx.post(f"{BASE_URI}api/demo/pointWrite").mock(
+            return_value=httpx.Response(
+                200,
+                content=_response_grid(),
+                headers={"Content-Type": "text/zinc"},
+            )
+        )
+        session = SkysparkScramHaystackSession(
+            uri=BASE_URI,
+            username="sky-user",
+            password="secret",
+            project="demo",
+        )
+        session._authenticated = True
+        session._client.headers = {"Authorization": "Bearer authToken=token123"}
+
+        try:
+            await session.point_write(POINT, level=8, val=12.5)
+        finally:
+            await session.close()
+
+        request = route.calls[0].request
+        assert request.headers["authorization"] == "Bearer authToken=token123"
+        assert "attest-key" not in request.headers
+
+
+@pytest.mark.asyncio
+async def test_skyspark_point_write_rebuilds_attestation_after_401():
+    with respx.mock:
+        route = respx.post(f"{BASE_URI}api/demo/pointWrite").mock(
+            side_effect=[
+                httpx.Response(401, text="expired"),
+                httpx.Response(
+                    200,
+                    content=_response_grid(),
+                    headers={"Content-Type": "text/zinc"},
+                ),
+            ]
+        )
+        session = SkysparkScramHaystackSession(
+            uri=BASE_URI,
+            username="sky-user",
+            password="secret",
+            project="demo",
+        )
+        session._authenticated = True
+        session._client.headers = {
+            "Authorization": "Bearer authToken=token123",
+            "Attest-Key": "attest123",
+        }
+
+        async def _reauthenticate() -> None:
+            session._authenticated = True
+            session._client.headers = {
+                "Authorization": "Bearer authToken=token456",
+                "Attest-Key": "attest456",
+            }
+
+        session._authenticate = _reauthenticate  # type: ignore[method-assign]
+
+        try:
+            await session.point_write(POINT, level=8, val=12.5)
+        finally:
+            await session.close()
+
+        assert route.call_count == 2
+        first = route.calls[0].request
+        second = route.calls[1].request
+        assert first.headers["authorization"] == "Bearer authToken=token123"
+        assert first.headers["attest-key"] == "attest123"
+        assert second.headers["authorization"] == "Bearer authToken=token456"
+        assert second.headers["attest-key"] == "attest456"
 
 
 @pytest.mark.asyncio
@@ -97,9 +206,7 @@ async def test_skyspark_point_write_omits_write_fields_without_level():
         finally:
             await session.close()
 
-        sent_grid = hszinc.parse(
-            route.calls[0].request.content.decode(), mode=hszinc.MODE_ZINC
-        )
+        sent_grid = hszinc.parse(route.calls[0].request.content.decode(), mode=hszinc.MODE_ZINC)
         assert list(sent_grid.column) == ["id"]
         assert sent_grid[0]["id"].name == POINT
 

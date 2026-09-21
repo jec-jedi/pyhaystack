@@ -61,8 +61,10 @@ class SkysparkHaystackSession(EvalMixin, HaystackSession):
 class SkysparkScramHaystackSession(EvalMixin, HaystackSession):
     """Async session for SkySpark servers (SCRAM bearer-token auth).
 
-    Defaults to exclude_cookies=True to prevent SkySpark from
-    demanding attestation keys on cookie round-trips.
+    Grid calls omit cookies so SkySpark authenticates the bearer token instead
+    of the login session cookie. Cookie POSTs require an ``Attest-Key`` header
+    (`400 Attest-Key header required` otherwise). When SCRAM issues a ``key``
+    parameter it is forwarded as ``Attest-Key``.
     """
 
     def __init__(

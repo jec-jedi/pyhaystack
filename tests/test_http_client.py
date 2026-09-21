@@ -84,9 +84,7 @@ async def test_accept_status_bypasses_error():
 async def test_headers_cookies_merge():
     """Test that default headers/cookies merge with per-request ones."""
     with respx.mock:
-        route = respx.get("https://example.com/api/test").mock(
-            return_value=httpx.Response(200)
-        )
+        route = respx.get("https://example.com/api/test").mock(return_value=httpx.Response(200))
         client = AsyncHttpClient(
             uri="https://example.com/",
             headers={"X-Default": "yes"},
@@ -109,9 +107,7 @@ async def test_headers_cookies_merge():
 async def test_exclude_headers():
     """Test exclude_headers=True drops defaults."""
     with respx.mock:
-        route = respx.get("https://example.com/api/test").mock(
-            return_value=httpx.Response(200)
-        )
+        route = respx.get("https://example.com/api/test").mock(return_value=httpx.Response(200))
         client = AsyncHttpClient(
             uri="https://example.com/",
             headers={"X-Default": "yes"},
@@ -125,12 +121,33 @@ async def test_exclude_headers():
 
 
 @pytest.mark.asyncio
+async def test_exclude_cookies_clears_httpx_jar():
+    """exclude_cookies must not send cookies stored in httpx's client jar."""
+    with respx.mock:
+        respx.get("https://example.com/login").mock(
+            return_value=httpx.Response(
+                200,
+                headers={"Set-Cookie": "hx-session-80=jar-cookie"},
+            )
+        )
+        route = respx.post("https://example.com/api/pointWrite").mock(
+            return_value=httpx.Response(200)
+        )
+        client = AsyncHttpClient(uri="https://example.com/")
+        try:
+            await client.get("login")
+            await client.post("api/pointWrite", body=b"grid", exclude_cookies=True)
+            req = route.calls[0].request
+            assert "cookie" not in req.headers
+        finally:
+            await client.close()
+
+
+@pytest.mark.asyncio
 async def test_basic_auth():
     """Test BasicAuthenticationCredentials integration."""
     with respx.mock:
-        route = respx.get("https://example.com/api/test").mock(
-            return_value=httpx.Response(200)
-        )
+        route = respx.get("https://example.com/api/test").mock(return_value=httpx.Response(200))
         client = AsyncHttpClient(uri="https://example.com/")
         client.auth = BasicAuthenticationCredentials("user", "pass")
         try:
@@ -146,9 +163,7 @@ async def test_basic_auth():
 async def test_base_uri_without_trailing_slash():
     """Relative requests work when the base URI omits the trailing slash."""
     with respx.mock:
-        respx.get("https://example.com/api/about").mock(
-            return_value=httpx.Response(200, text="OK")
-        )
+        respx.get("https://example.com/api/about").mock(return_value=httpx.Response(200, text="OK"))
         client = AsyncHttpClient(uri="https://example.com")
         try:
             resp = await client.get("api/about")
@@ -245,12 +260,8 @@ def test_invalid_legacy_ca_file_raises():
 async def test_concurrent_requests_no_client_teardown():
     """Concurrent requests do not close a client that another task is using."""
     with respx.mock:
-        respx.get("https://example.com/api/a").mock(
-            return_value=httpx.Response(200, text="a")
-        )
-        respx.get("https://example.com/api/b").mock(
-            return_value=httpx.Response(200, text="b")
-        )
+        respx.get("https://example.com/api/a").mock(return_value=httpx.Response(200, text="a"))
+        respx.get("https://example.com/api/b").mock(return_value=httpx.Response(200, text="b"))
         client = AsyncHttpClient(uri="https://example.com/")
         try:
             resp_a, resp_b = await asyncio.gather(

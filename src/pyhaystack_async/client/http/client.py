@@ -213,6 +213,11 @@ class AsyncHttpClient:
 
         try:
             try:
+                # httpx still sends its cookie jar even when our session cookie
+                # dict is excluded. SkySpark treats a session cookie as cookie
+                # auth and rejects POSTs without Attest-Key.
+                if exclude_cookies is True:
+                    client.cookies.clear()
                 response = await client.request(
                     method=method,
                     url=uri,

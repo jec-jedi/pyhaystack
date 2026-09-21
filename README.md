@@ -4,7 +4,6 @@ SkySpark async session implementations (legacy HMAC + SCRAM).
 
 ## Requirements
 
-
 ## Quick Start
 
 ```python
@@ -34,6 +33,12 @@ async with connect(
 ) as session:
     result = await session.point_write("p:thgr:r:323bd44b-6c859c1a", level=8, val=42.0)
 ```
+
+Haystack SCRAM returns an opaque `authToken` in `Authentication-Info` and may
+include extra parameters. SkySpark cookie authentication requires an
+`Attest-Key` header on non-GET requests. The SCRAM session authenticates with
+the bearer token, omits session cookies on grid calls, and forwards a `key`
+parameter as `Attest-Key` when the server issues one.
 
 ## HTTP and TLS Configuration
 

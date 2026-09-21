@@ -280,8 +280,60 @@ async def test_skyspark_scram_auth():
             client = AsyncHttpClient(uri="https://sky.local")
             try:
                 headers = await authenticate_skyspark_scram(client, "admin", "pass")
-                assert headers == {"Authorization": "Bearer authToken=token123"}
+                assert headers == {
+                    "Authorization": "Bearer authToken=token123",
+                    "Attest-Key": "attest123",
+                }
                 assert route.call_count == 3
+            finally:
+                await client.close()
+
+
+@pytest.mark.asyncio
+async def test_skyspark_scram_auth_without_attest_key():
+    """Servers that omit Authentication-Info key still return only the bearer token."""
+    from pyhaystack_async.client.ops.skyspark_scram import authenticate_skyspark_scram
+
+    nonce = "nonce123"
+    server_salt = urlsafe_b64encode(b"salt").decode().rstrip("=")
+    server_first_msg = f"r={nonce}server,s={server_salt},i=4096"
+    server_data = standard_b64encode(server_first_msg.encode()).decode().rstrip("=")
+
+    def ui_callback(request: httpx.Request) -> httpx.Response:
+        auth_header = request.headers["authorization"]
+        if auth_header.startswith("HELLO username="):
+            return httpx.Response(
+                401,
+                headers={"WWW-Authenticate": "scram handshakeToken=hs123, hash=SHA-256"},
+            )
+        if auth_header.startswith("SCRAM data="):
+            return httpx.Response(
+                401,
+                headers={
+                    "WWW-Authenticate": (
+                        f"scram data={server_data}, handshakeToken=hs123, hash=SHA-256"
+                    )
+                },
+            )
+        if auth_header.startswith("scram handshaketoken=hs123,data="):
+            return httpx.Response(
+                200,
+                headers={"Authentication-Info": "authToken=token123,hash=SHA-256"},
+            )
+        raise AssertionError(f"Unexpected Authorization header: {auth_header!r}")
+
+    with patch(
+        "pyhaystack_async.client.ops.skyspark_scram.scram.get_nonce",
+        return_value=nonce,
+    ):
+        with respx.mock:
+            respx.get("https://sky.local/user/auth").mock(side_effect=ui_callback)
+
+            client = AsyncHttpClient(uri="https://sky.local")
+            try:
+                headers = await authenticate_skyspark_scram(client, "admin", "pass")
+                assert headers == {"Authorization": "Bearer authToken=token123"}
+                assert "Attest-Key" not in headers
             finally:
                 await client.close()
 

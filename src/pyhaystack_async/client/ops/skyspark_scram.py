@@ -4,6 +4,10 @@ Flow:
 1. GET /user/auth with HELLO header → get algorithm + handshakeToken
 2. GET /user/auth with SCRAM client-first message → get server nonce/salt/iterations
 3. GET /user/auth with computed client proof → get authToken from Authentication-Info
+
+Haystack allows extra Authentication-Info parameters. SkySpark may include ``key``,
+which is sent as the ``Attest-Key`` header so cookie-authenticated POSTs (including
+``pointWrite``) are accepted. See Project Haystack Auth and Haxall ``HxdUserAuth``.
 """
 
 from __future__ import annotations
@@ -32,6 +36,21 @@ def _challenge_params(value: str) -> dict[str, str]:
     return params
 
 
+def _auth_headers(auth_info: str) -> dict[str, str]:
+    """Build persistent request headers from Authentication-Info."""
+    params = _challenge_params(auth_info)
+    auth_token = params.get("authtoken")
+    if not auth_token:
+        raise ValueError("SkySpark SCRAM: missing authToken in Authentication-Info")
+
+    headers = {"Authorization": f"Bearer authToken={auth_token}"}
+    attest_key = params.get("key")
+    if attest_key:
+        # SkySpark cookie POSTs require Attest-Key; Haystack permits extra auth params.
+        headers["Attest-Key"] = attest_key
+    return headers
+
+
 async def authenticate_skyspark_scram(
     client: AsyncHttpClient,
     username: str,
@@ -39,7 +58,7 @@ async def authenticate_skyspark_scram(
 ) -> dict[str, str]:
     """Perform SkySpark SCRAM authentication.
 
-    Returns headers dict with Authorization bearer token.
+    Returns headers with the bearer token and, when issued, ``Attest-Key``.
     """
     # Step 1: HELLO handshake
     nonce = scram.get_nonce()
@@ -139,9 +158,5 @@ async def authenticate_skyspark_scram(
         accept_status={200, 302},
     )
 
-    # Extract authToken from Authentication-Info header
     auth_info = _challenge_header(resp.headers, "authentication-info")
-    info_parts = auth_info.split(",")
-    auth_token = scram.regex_after_equal(info_parts[0])
-
-    return {"Authorization": f"Bearer authToken={auth_token}"}
+    return _auth_headers(auth_info)
